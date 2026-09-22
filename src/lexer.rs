@@ -1,8 +1,6 @@
 /*
  * lexer.rs
- */
-
-use std::assert_eq;
+*/
 
  #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
