@@ -12,7 +12,7 @@ pub enum Token {
 }
 
 #[derive(Debug)]
-enum LexError {
+pub enum LexError {
 	InvalidTokenError,
 }
 
