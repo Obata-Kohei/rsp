@@ -4,6 +4,9 @@
 
 use crate::lexer::Token;
 
+const NIL: &str = "nil";
+const QUOTE: &str = "quote";
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum SExpr {
 	Atom(String),
@@ -11,7 +14,7 @@ pub enum SExpr {
 	Cons(Box<SExpr>, Box<SExpr>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ParseError {
 	UnexpectedToken(Token),
 	UnexpectedEof,
@@ -19,7 +22,6 @@ pub enum ParseError {
 	InvalidDottedPair,
 }
 
-#[derive(Debug, Clone)]
 pub struct Parser {
 	tokens: Vec<Token>,
 	position: usize,
@@ -27,128 +29,85 @@ pub struct Parser {
 
 impl Parser {
 	pub fn new(tokens: Vec<Token>) -> Self {
-		Self {tokens, position: 0}
+		Self { tokens, position: 0 }
 	}
 
 	pub fn parse(&mut self) -> Result<SExpr, ParseError> {
 		let expr = self.parse_expr()?;
 
-		// parse_expr() の後にTokenが残っていたらエラー
 		if self.position < self.tokens.len() {
 			return Err(ParseError::UnexpectedToken(
-                self.tokens[self.position].clone()
-            ));
+				self.tokens[self.position].clone(),
+			));
 		}
 
 		Ok(expr)
 	}
 
-	// 1つのS式を読み込む
 	fn parse_expr(&mut self) -> Result<SExpr, ParseError> {
 		let token = self.next_token()?;
 
 		match token {
-			// nilのパターン
-			Token::Symbol(s) if s == "nil" => {
-				Ok(SExpr::Nil)
+			Token::Symbol(s) if s == NIL => Ok(SExpr::Nil),
+			Token::Symbol(symbol) => Ok(SExpr::Atom(symbol)),
+
+			// 構文糖衣: 'expr -> (quote expr)
+			Token::Quote => {
+				let expr = self.parse_expr()?;
+				Ok(SExpr::Cons(
+					Box::new(SExpr::Atom(QUOTE.to_string())),
+					Box::new(SExpr::Cons(Box::new(expr), Box::new(SExpr::Nil)))
+				))
 			}
 
-			// Symbol -> Atom
-			Token::Symbol(symbol) => {
-				Ok(SExpr::Atom(symbol))
-			}
+			Token::LParen => self.parse_list(),
 
-			// `(`が来たらリストとしてパースする
-			Token::LParen => {
-				self.parse_list()
-			}
-
-			// `)`閉じかっこはエラー
-			Token::RParen => {
-				Err(ParseError::UnexpectedCloseParen)
-			}
-
-			// `.`はエラー
-			Token::Dot => {
-				Err(ParseError::InvalidDottedPair)
-			}
+			// ')' や '.' はパースエラー
+			Token::RParen => Err(ParseError::UnexpectedCloseParen),
+			Token::Dot => Err(ParseError::InvalidDottedPair),
 		}
 	}
 
-	// リストのパース
+	// '(' の後の要素をパースする
 	fn parse_list(&mut self) -> Result<SExpr, ParseError> {
-		// 空Cons cell `()` の場合は `nil` として扱う`
+		// ()はnilに
 		if self.peek_token() == Some(&Token::RParen) {
-			self.next_token();
+			self.next_token()?;
 			return Ok(SExpr::Nil);
 		}
 
 		// 最初の要素をパースする
-		let first = self.parse_expr()?;
-		// リストの残りを読み込む
-		self.parse_list_tail(first)
-	}
+		let head = self.parse_expr()?;
 
-	fn parse_list_tail(&mut self, first: SExpr) -> Result<SExpr, ParseError> {
+		// 次のトークンを確認してCons cell(ドット対)やリスト(構文糖衣)をパースする
 		match self.peek_token() {
-			// (A . B)
+			// Cons cell (A . B)
 			Some(Token::Dot) => {
-				self.next_token();
-				let second = self.parse_expr()?;
+				self.next_token()?;  // '.'を消費
+				let tail = self.parse_expr()?;
 
-				match self.peek_token() {
-					Some(Token::RParen) => {
-						self.next_token();
-
-						Ok(SExpr::Cons(
-							Box::new(first),
-							Box::new(second),
-						))
-					}
-
-					_ => {
-						Err(ParseError::InvalidDottedPair)
-					}
+				// Cons cellは必ず')'で終わる
+				if self.next_token()? != Token::RParen {
+					return Err(ParseError::InvalidDottedPair);
 				}
+
+				Ok(SExpr::Cons(Box::new(head), Box::new(tail)))
 			}
 
-			// (A)
-			Some(Token::RParen) => {
-				self.next_token();
-
-				Ok(SExpr::Cons(
-					Box::new(first),
-				Box::new(SExpr::Nil)
-				))
-			}
-
-			// (A B ...)
-			Some(_) => {
-				let second = self.parse_expr()?;
-				let rest = self.parse_list_tail(second)?;
-
-				Ok(SExpr::Cons(
-					Box::new(first),
-					Box::new(rest),
-				))
-			}
-
-			// `)`がない
-			None => {
-				Err(ParseError::UnexpectedEof)
+			// 構文糖衣 (A), (A B C) や None の処理
+			_ =>  {
+				let tail = self.parse_list()?;
+				Ok(SExpr::Cons(Box::new(head), Box::new(tail)))
 			}
 		}
 	}
 
-	// 次のtokenを取得して，self.positionを進める
 	fn next_token(&mut self) -> Result<Token, ParseError> {
 		if self.position >= self.tokens.len() {
 			return Err(ParseError::UnexpectedEof);
 		}
-
 		let token = self.tokens[self.position].clone();
 		self.position += 1;
-
 		Ok(token)
 	}
 
@@ -156,6 +115,7 @@ impl Parser {
 		self.tokens.get(self.position)
 	}
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -170,72 +130,67 @@ mod tests {
 
     #[test]
     fn parse_atom() {
-        assert_eq!(
-            parse("A"),
-            SExpr::Atom("A".to_string())
-        );
+        assert_eq!(parse("A"), SExpr::Atom("A".to_string()));
     }
 
     #[test]
     fn parse_nil() {
-        assert_eq!(
-            parse("nil"),
-            SExpr::Nil
-        );
+        assert_eq!(parse("nil"), SExpr::Nil);
+        assert_eq!(parse("()"), SExpr::Nil);
     }
 
     #[test]
-    fn parse_empty_list() {
-        assert_eq!(
-            parse("()"),
-            SExpr::Nil
-        );
-    }
-
-    #[test]
-    fn parse_cons() {
+    fn parse_dotted_pair() {
         assert_eq!(
             parse("(A . B)"),
             SExpr::Cons(
                 Box::new(SExpr::Atom("A".to_string())),
-                Box::new(SExpr::Atom("B".to_string())),
+                Box::new(SExpr::Atom("B".to_string()))
             )
         );
     }
 
     #[test]
-    fn parse_list() {
+    fn parse_single_element_list() {
+        // (A) -> (A . nil)
+        assert_eq!(
+            parse("(A)"),
+            SExpr::Cons(
+                Box::new(SExpr::Atom("A".to_string())),
+                Box::new(SExpr::Nil)
+            )
+        );
+    }
+
+    #[test]
+    fn parse_list_sugar() {
+        // (A B C) -> (A . (B . (C . nil)))
         assert_eq!(
             parse("(A B C)"),
             SExpr::Cons(
                 Box::new(SExpr::Atom("A".to_string())),
-                Box::new(
-                    SExpr::Cons(
-                        Box::new(SExpr::Atom("B".to_string())),
-                        Box::new(
-                            SExpr::Cons(
-                                Box::new(SExpr::Atom("C".to_string())),
-                                Box::new(SExpr::Nil),
-                            )
-                        ),
-                    )
-                ),
+                Box::new(SExpr::Cons(
+                    Box::new(SExpr::Atom("B".to_string())),
+                    Box::new(SExpr::Cons(
+                        Box::new(SExpr::Atom("C".to_string())),
+                        Box::new(SExpr::Nil)
+                    ))
+                ))
             )
         );
     }
 
     #[test]
-    fn parse_nested_cons() {
+    fn parse_quote_sugar() {
+        // 'A -> (quote A) -> (quote . (A . nil))
         assert_eq!(
-            parse("(A . (B . C))"),
+            parse("'A"),
             SExpr::Cons(
-                Box::new(SExpr::Atom("A".to_string())),
-                Box::new(
-                    SExpr::Cons(
-                        Box::new(SExpr::Atom("B".to_string())),
-                        Box::new(SExpr::Atom("C".to_string())),
-                    )
-                ),
+                Box::new(SExpr::Atom("quote".to_string())),
+                Box::new(SExpr::Cons(
+                    Box::new(SExpr::Atom("A".to_string())),
+                    Box::new(SExpr::Nil)
+                ))
             )
         );
     }
