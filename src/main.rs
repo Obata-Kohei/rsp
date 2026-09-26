@@ -31,7 +31,7 @@ fn main() {
 
     // 2. 構文解析 (Parsing)
     let mut parser = Parser::new(tokens);
-    let ast = match parser.parse() {
+    let ast = match parser.parse_one() {
         Ok(expr) => expr,
         Err(e) => {
             eprintln!("ParseError: {:?}", e);

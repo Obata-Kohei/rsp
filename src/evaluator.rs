@@ -370,7 +370,7 @@ mod tests {
     fn eval_str(input: &str) -> Result<Value, EvalError> {
         let tokens = tokenize(input).unwrap();
         let mut parser = Parser::new(tokens);
-        let expr = parser.parse().unwrap();
+        let expr = parser.parse_one().unwrap();
 
         let env = Rc::new(RefCell::new(Environment::new()));
         eval(&expr, env)
@@ -575,7 +575,7 @@ mod tests {
         ).unwrap();
 
         let mut parser = Parser::new(tokens);
-        let expr = parser.parse().unwrap();
+        let expr = parser.parse_one().unwrap();
 
         let env = Rc::new(RefCell::new(Environment::new()));
 

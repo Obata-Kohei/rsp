@@ -32,7 +32,7 @@ impl Parser {
 		Self { tokens, position: 0 }
 	}
 
-	pub fn parse(&mut self) -> Result<SExpr, ParseError> {
+	pub fn parse_one(&mut self) -> Result<SExpr, ParseError> {
 		let expr = self.parse_expr()?;
 
 		if self.position < self.tokens.len() {
@@ -125,7 +125,7 @@ mod tests {
     fn parse(input: &str) -> SExpr {
         let tokens = tokenize(input).unwrap();
         let mut parser = Parser::new(tokens);
-        parser.parse().unwrap()
+        parser.parse_one().unwrap()
     }
 
     #[test]
