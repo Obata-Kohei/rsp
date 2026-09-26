@@ -63,3 +63,109 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, LexError> {
 
 	Ok(token_list)
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tokenize_atom() {
+        assert_eq!(
+            tokenize("ABC").unwrap(),
+            vec![Token::Symbol("ABC".to_string())]
+        );
+    }
+
+    #[test]
+    fn tokenize_multiple_symbols() {
+        assert_eq!(
+            tokenize("A B C").unwrap(),
+            vec![
+                Token::Symbol("A".to_string()),
+                Token::Symbol("B".to_string()),
+                Token::Symbol("C".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn tokenize_parentheses() {
+        assert_eq!(
+            tokenize("(A B)").unwrap(),
+            vec![
+                Token::LParen,
+                Token::Symbol("A".to_string()),
+                Token::Symbol("B".to_string()),
+                Token::RParen,
+            ]
+        );
+    }
+
+    #[test]
+    fn tokenize_dotted_pair() {
+        assert_eq!(
+            tokenize("(A . B)").unwrap(),
+            vec![
+                Token::LParen,
+                Token::Symbol("A".to_string()),
+                Token::Dot,
+                Token::Symbol("B".to_string()),
+                Token::RParen,
+            ]
+        );
+    }
+
+    #[test]
+    fn tokenize_quote() {
+        assert_eq!(
+            tokenize("'A").unwrap(),
+            vec![
+                Token::Quote,
+                Token::Symbol("A".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn tokenize_nested_expression() {
+        assert_eq!(
+            tokenize("((lambda (x) (atom x)) 'Hello)").unwrap(),
+            vec![
+                Token::LParen,
+                Token::LParen,
+                Token::Symbol("lambda".to_string()),
+                Token::LParen,
+                Token::Symbol("x".to_string()),
+                Token::RParen,
+                Token::LParen,
+                Token::Symbol("atom".to_string()),
+                Token::Symbol("x".to_string()),
+                Token::RParen,
+                Token::RParen,
+                Token::Quote,
+                Token::Symbol("Hello".to_string()),
+                Token::RParen,
+            ]
+        );
+    }
+
+    #[test]
+    fn tokenize_whitespace() {
+        assert_eq!(
+            tokenize(" \t\n  A \n B ").unwrap(),
+            vec![
+                Token::Symbol("A".to_string()),
+                Token::Symbol("B".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn tokenize_empty_input() {
+        assert_eq!(
+            tokenize("").unwrap(),
+            Vec::<Token>::new()
+        );
+    }
+}

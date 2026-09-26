@@ -194,4 +194,108 @@ mod tests {
             )
         );
     }
+
+	#[test]
+	fn parse_unexpected_close_paren() {
+		let tokens = tokenize(")").unwrap();
+		let mut parser = Parser::new(tokens);
+
+		assert_eq!(
+			parser.parse(),
+			Err(ParseError::UnexpectedCloseParen)
+		);
+	}
+
+	#[test]
+	fn parse_unexpected_dot() {
+		let tokens = tokenize(".").unwrap();
+		let mut parser = Parser::new(tokens);
+
+		assert_eq!(
+			parser.parse(),
+			Err(ParseError::InvalidDottedPair)
+		);
+	}
+
+	#[test]
+	fn parse_unclosed_list() {
+		let tokens = tokenize("(A B").unwrap();
+		let mut parser = Parser::new(tokens);
+
+		assert_eq!(
+			parser.parse(),
+			Err(ParseError::UnexpectedEof)
+		);
+	}
+
+	#[test]
+	fn parse_invalid_dotted_pair() {
+		let tokens = tokenize("(A . B C)").unwrap();
+		let mut parser = Parser::new(tokens);
+
+		assert_eq!(
+			parser.parse(),
+			Err(ParseError::InvalidDottedPair)
+		);
+	}
+
+	#[test]
+	fn parse_empty_list() {
+		assert_eq!(
+			parse("()"),
+			SExpr::Nil
+		);
+	}
+
+	#[test]
+	fn parse_nested_list() {
+		assert_eq!(
+			parse("(A (B C))"),
+			SExpr::Cons(
+				Box::new(SExpr::Atom("A".to_string())),
+				Box::new(
+					SExpr::Cons(
+						Box::new(
+							SExpr::Cons(
+								Box::new(SExpr::Atom("B".to_string())),
+								Box::new(
+									SExpr::Cons(
+										Box::new(SExpr::Atom("C".to_string())),
+										Box::new(SExpr::Nil),
+									)
+								),
+							)
+						),
+						Box::new(SExpr::Nil),
+					)
+				),
+			)
+		);
+	}
+
+	#[test]
+	fn parse_nested_quote() {
+		assert_eq!(
+			parse("'(A B)"),
+			SExpr::Cons(
+				Box::new(SExpr::Atom("quote".to_string())),
+				Box::new(
+					SExpr::Cons(
+						Box::new(
+							SExpr::Cons(
+								Box::new(SExpr::Atom("A".to_string())),
+								Box::new(
+									SExpr::Cons(
+										Box::new(SExpr::Atom("B".to_string())),
+										Box::new(SExpr::Nil),
+									)
+								),
+							)
+						),
+						Box::new(SExpr::Nil),
+					)
+				),
+			)
+		);
+	}
 }

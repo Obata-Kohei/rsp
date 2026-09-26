@@ -210,7 +210,7 @@ fn eval_special_form(
         "quote" => eval_quote(args),
         "cond" => eval_cond(args, env),
         "lambda" => eval_lambda(args, env),
-        "deifne" => eval_define(args, env),
+        "define" => eval_define(args, env),
         _ => Err(EvalError::InvalidSpecialForm),
     }
 }
@@ -358,4 +358,292 @@ fn extract_list(expr: &SExpr) -> Result<Vec<&SExpr>, EvalError> {
         }
     }
     Ok(elements)
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lexer::tokenize;
+    use crate::parser::Parser;
+
+    fn eval_str(input: &str) -> Result<Value, EvalError> {
+        let tokens = tokenize(input).unwrap();
+        let mut parser = Parser::new(tokens);
+        let expr = parser.parse().unwrap();
+
+        let env = Rc::new(RefCell::new(Environment::new()));
+        eval(&expr, env)
+    }
+
+    #[test]
+    fn eval_atom() {
+        assert_eq!(
+            eval_str("(atom 'A)").unwrap(),
+            Value::Atom("T".to_string())
+        );
+    }
+
+    #[test]
+    fn eval_atom_with_nil() {
+        assert_eq!(
+            eval_str("(atom 'A)").unwrap(),
+            Value::Atom("T".to_string())
+        );
+    }
+
+    #[test]
+    fn eval_atom_on_cons() {
+        assert_eq!(
+            eval_str("(atom '(A . B))").unwrap(),
+            Value::Nil
+        );
+    }
+
+    #[test]
+    fn eval_eq_equal_atoms() {
+        assert_eq!(
+            eval_str("(eq 'A 'A)").unwrap(),
+            Value::Atom("T".to_string())
+        );
+    }
+
+    #[test]
+    fn eval_eq_different_atoms() {
+        assert_eq!(
+            eval_str("(eq 'A 'B)").unwrap(),
+            Value::Nil
+        );
+    }
+
+    #[test]
+    fn eval_car() {
+        assert_eq!(
+            eval_str("(car '(A . B))").unwrap(),
+            Value::Atom("A".to_string())
+        );
+    }
+
+    #[test]
+    fn eval_cdr() {
+        assert_eq!(
+            eval_str("(cdr '(A . B))").unwrap(),
+            Value::Atom("B".to_string())
+        );
+    }
+
+    #[test]
+    fn eval_cons() {
+        assert_eq!(
+            eval_str("(cons 'A 'B)").unwrap(),
+            Value::Cons(
+                Rc::new(Value::Atom("A".to_string())),
+                Rc::new(Value::Atom("B".to_string())),
+            )
+        );
+    }
+
+    #[test]
+    fn eval_quote() {
+        assert_eq!(
+            eval_str("'Hello").unwrap(),
+            Value::Atom("Hello".to_string())
+        );
+    }
+
+    #[test]
+    fn eval_quote_list() {
+        assert_eq!(
+            eval_str("'(A B)").unwrap(),
+            Value::Cons(
+                Rc::new(Value::Atom("A".to_string())),
+                Rc::new(
+                    Value::Cons(
+                        Rc::new(Value::Atom("B".to_string())),
+                        Rc::new(Value::Nil),
+                    )
+                ),
+            )
+        );
+    }
+
+    #[test]
+    fn eval_cond_first_true() {
+        assert_eq!(
+            eval_str(
+                "(cond
+                    ((eq 'A 'A) 'first)
+                    ((eq 'A 'B) 'second)
+                    (T 'default))"
+            ).unwrap(),
+            Value::Atom("first".to_string())
+        );
+    }
+
+    #[test]
+    fn eval_cond_second_true() {
+        assert_eq!(
+            eval_str(
+                "(cond
+                    ((eq 'A 'B) 'first)
+                    ((eq 'A 'A) 'second)
+                    (T 'default))"
+            ).unwrap(),
+            Value::Atom("second".to_string())
+        );
+    }
+
+    #[test]
+    fn eval_cond_else() {
+        assert_eq!(
+            eval_str(
+                "(cond
+                    ((eq 'A 'B) 'first)
+                    (T 'default))"
+            ).unwrap(),
+            Value::Atom("default".to_string())
+        );
+    }
+
+    #[test]
+    fn eval_lambda() {
+        assert_eq!(
+            eval_str(
+                "((lambda (x) (atom x)) 'Hello)"
+            ).unwrap(),
+            Value::Atom("T".to_string())
+        );
+    }
+
+    #[test]
+    fn eval_lambda_using_argument() {
+        assert_eq!(
+            eval_str(
+                "((lambda (x) x) 'Hello)"
+            ).unwrap(),
+            Value::Atom("Hello".to_string())
+        );
+    }
+
+    #[test]
+    fn eval_lambda_multiple_arguments() {
+        assert_eq!(
+            eval_str(
+                "((lambda (x y) (cons x y)) 'A 'B)"
+            ).unwrap(),
+            Value::Cons(
+                Rc::new(Value::Atom("A".to_string())),
+                Rc::new(Value::Atom("B".to_string())),
+            )
+        );
+    }
+
+    #[test]
+    fn lambda_unused_argument_is_valid() {
+        assert_eq!(
+            eval_str(
+                "((lambda (x y) (atom x)) 'Hello 'World)"
+            ).unwrap(),
+            Value::Atom("T".to_string())
+        );
+    }
+
+    #[test]
+    fn lambda_argument_count_error() {
+        assert_eq!(
+            eval_str(
+                "((lambda (x y) (atom x)) 'Hello)"
+            ),
+            Err(EvalError::InvalidArgumentCount)
+        );
+    }
+
+    #[test]
+    fn lambda_too_many_arguments() {
+        assert_eq!(
+            eval_str(
+                "((lambda (x) x) 'A 'B)"
+            ),
+            Err(EvalError::InvalidArgumentCount)
+        );
+    }
+
+    #[test]
+    fn eval_define() {
+        let tokens = tokenize(
+            "(define x 'Hello)"
+        ).unwrap();
+
+        let mut parser = Parser::new(tokens);
+        let expr = parser.parse().unwrap();
+
+        let env = Rc::new(RefCell::new(Environment::new()));
+
+        let result = eval(&expr, Rc::clone(&env)).unwrap();
+
+        assert_eq!(
+            result,
+            Value::Atom("Hello".to_string())
+        );
+
+        assert_eq!(
+            eval(
+                &Parser::new(
+                    tokenize("x").unwrap()
+                ).parse().unwrap(),
+                env,
+            ).unwrap(),
+            Value::Atom("Hello".to_string())
+        );
+    }
+
+    #[test]
+    fn undefined_symbol() {
+        assert_eq!(
+            eval_str("unknown"),
+            Err(EvalError::UndefinedSymbol(
+                "unknown".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn car_requires_cons() {
+        assert_eq!(
+            eval_str("(car 'A)"),
+            Err(EvalError::InvalidArgumentType)
+        );
+    }
+
+    #[test]
+    fn cdr_requires_cons() {
+        assert_eq!(
+            eval_str("(cdr 'A)"),
+            Err(EvalError::InvalidArgumentType)
+        );
+    }
+
+    #[test]
+    fn atom_argument_count_error() {
+        assert_eq!(
+            eval_str("(atom 'A 'B)"),
+            Err(EvalError::InvalidArgumentCount)
+        );
+    }
+
+    #[test]
+    fn eq_argument_count_error() {
+        assert_eq!(
+            eval_str("(eq 'A)"),
+            Err(EvalError::InvalidArgumentCount)
+        );
+    }
+
+    #[test]
+    fn cons_argument_count_error() {
+        assert_eq!(
+            eval_str("(cons 'A)"),
+            Err(EvalError::InvalidArgumentCount)
+        );
+    }
 }

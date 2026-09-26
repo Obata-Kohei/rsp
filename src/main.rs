@@ -15,15 +15,7 @@ use parser::Parser;
 
 fn main() {
     // 実行するLispコード（無名関数を定義して即座に呼び出す例）
-    //let code = "((lambda (x y) (cons x y)) '(A . B) '(C D))";
-    let code = "(define f (lambda (x) (atom x)))";
-    let code = "(atom 'A)";  // atom
-    let code = "(define x 'Hello)";  // define
-    let code = "((lambda (x) (cons x 'World)) 'Hello)";  // lambda
-    let code = "(cond
-  ((eq 'A 'B) 'first)
-  ((eq 'A 'A) 'second)
-  (T 'default))";  // cond
+    let code = "(define x ((lambda (x y) (cons x y)) '(A . B) '(C D)))";
     println!("--- Input Code ---");
     println!("{}", code);
     println!();
