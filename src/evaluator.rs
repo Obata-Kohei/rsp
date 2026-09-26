@@ -8,7 +8,7 @@ use std::{
     rc::Rc,
 };
 
-use crate::{evaluator::Value::Builtin, parser::SExpr};
+use crate::parser::SExpr;
 
 
 // 評価する値の種類
@@ -18,7 +18,7 @@ pub enum Value {
     Nil,
     Cons(Rc<Value>, Rc<Value>),
 
-    Builtin(Builtin),
+    Builtin(BuiltinFunction),
     Lambda(Rc<Closure>),
 }
 
@@ -52,7 +52,7 @@ impl BuiltinFunction {
                 }
                 match (&args[0], &args[1]) {
                     (Value::Atom(a), Value::Atom(b)) if a == b => Ok(Value::Atom("T".to_string())),
-                    (Value::Nil, value::Nil) => Ok(Value::Atom("T".to_string())),
+                    (Value::Nil, Value::Nil) => Ok(Value::Atom("T".to_string())),
                     _ => Ok(Value::Nil),
                 }
             }
@@ -142,7 +142,7 @@ impl Environment {
         self.values.insert(name, value);
     }
 
-    pub fn lookup(&self, name: &str) -> Option<value> {
+    pub fn lookup(&self, name: &str) -> Option<Value> {
         if let Some(val) = self.values.get(name) {
             // まずは現環境から探す
             Some(val.clone())
@@ -213,4 +213,149 @@ fn eval_special_form(
         "deifne" => eval_define(args, env),
         _ => Err(EvalError::InvalidSpecialForm),
     }
+}
+
+fn eval_quote(args: &SExpr) -> Result<Value, EvalError> {
+    let list = extract_list(args)?;
+    if list.len() != 1 {
+        return Err(EvalError::InvalidArgumentCount);
+    }
+    Ok(quote_to_value(list[0]))
+}
+
+fn eval_cond(clauses: &SExpr, env: Rc<RefCell<Environment>>) -> Result<Value, EvalError> {
+    for clause in extract_list(clauses)? {
+        let clause_list = extract_list(clause)?;
+        if clause_list.is_empty() {
+            continue;
+        }
+
+        let condition = clause_list[0];
+        let cond_val = eval(condition, Rc::clone(&env))?;
+
+        if cond_val != Value::Nil {
+            if clause_list.len() > 1 {
+                let mut res = Value::Nil;
+                for expr in clause_list.iter().skip(1) {
+                    res = eval(expr, Rc::clone(&env))?;
+                }
+                return Ok(res);
+            } else {
+                return Ok(cond_val);
+            }
+        }
+    }
+    Ok(Value::Nil)
+}
+
+fn eval_lambda(args: &SExpr, env: Rc<RefCell<Environment>>) -> Result<Value, EvalError> {
+    let list = extract_list(args)?;
+    if list.len() != 2 {
+        return Err(EvalError::InvalidLambda);
+    }
+
+    let mut params = Vec::new();
+    for p in extract_list(list[0])? {
+        match p {
+            SExpr::Atom(name) => params.push(name.clone()),
+            _ => return Err(EvalError::InvalidLambda),
+        }
+    }
+
+    Ok(Value::Lambda(Rc::new(Closure {
+        params,
+        body: list[1].clone(),
+        env,
+    })))
+}
+
+fn eval_define(args: &SExpr, env: Rc<RefCell<Environment>>) -> Result<Value, EvalError> {
+    let list = extract_list(args)?;
+    if list.len() != 2 {
+        return Err(EvalError::InvalidArgumentCount);
+    }
+
+    let name = match list[0] {
+        SExpr::Atom(n) => n.clone(),
+        _ => return Err(EvalError::InvalidArgumentType),
+    };
+
+    let value = eval(list[1], Rc::clone(&env))?;
+    env.borrow_mut().define(name, value.clone());
+    Ok(value)
+}
+
+
+// function application
+fn eval_application(
+    operator: &SExpr,
+    arguments: &SExpr,
+    env: Rc<RefCell<Environment>>,
+) -> Result<Value, EvalError> {
+    let function = eval(operator, Rc::clone(&env))?;
+    let args_evaluated = eval_arguments(arguments, env)?;
+    apply(function, args_evaluated)
+}
+
+fn eval_arguments(
+    args: &SExpr,
+    env: Rc<RefCell<Environment>>,
+) -> Result<Vec<Value>, EvalError> {
+    let list = extract_list(args)?;
+    let mut evaluated = Vec::new();
+    for expr in list {
+        evaluated.push(eval(expr, Rc::clone(&env))?);
+    }
+    Ok(evaluated)
+}
+
+fn apply(function: Value, arguments: Vec<Value>) -> Result<Value, EvalError> {
+    match function {
+        Value::Builtin(builtin) => builtin.call(&arguments),
+        Value::Lambda(closure) => apply_lambda(&closure, arguments),
+        _ => Err(EvalError::NotCallable),
+    }
+}
+
+fn apply_lambda(closure: &Closure, arguments: Vec<Value>) -> Result<Value, EvalError> {
+    if closure.params.len() != arguments.len() {
+        return Err(EvalError::InvalidArgumentCount);
+    }
+
+    let mut new_env = Environment::with_parent(Rc::clone(&closure.env));
+    for (param, arg) in closure.params.iter().zip(arguments.into_iter()) {
+        new_env.define(param.clone(), arg);
+    }
+
+    eval(&closure.body, Rc::new(RefCell::new(new_env)))
+}
+
+
+// ユーティティ
+fn quote_to_value(expr: &SExpr) -> Value {
+    match expr {
+        SExpr::Nil => Value::Nil,
+        SExpr::Atom(name) => Value::Atom(name.clone()),
+        SExpr::Cons(car, cdr) => Value::Cons(
+            Rc::new(quote_to_value(car)),
+            Rc::new(quote_to_value(cdr)),
+        ),
+    }
+}
+
+// S式を平坦なリスト構造のイテレーション用に抽出する
+fn extract_list(expr: &SExpr) -> Result<Vec<&SExpr>, EvalError> {
+    let mut elements= Vec::new();
+    let mut current = expr;
+    loop {
+        match current {
+            SExpr::Nil => break,
+            SExpr::Cons(car, cdr) => {
+                elements.push(&**car);
+                current = &**cdr;
+            }
+            SExpr::Atom(_) => return Err(EvalError::InvalidArgumentType),
+        }
+    }
+    Ok(elements)
 }
