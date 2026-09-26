@@ -20,8 +20,8 @@ jobs:
           # document/ ディレクトリが存在しない場合は作成
           mkdir -p document/
 
-          chmod +x ./script/dir2md.sh ./ -o ./document/ --no-binary --exclude "./script/dir2md.sh|./.github/workflows/repo-summary.yml"
-          ./script/dir2md.sh
+          chmod +x ./script/dir2md.sh
+          ./script/dir2md.sh ./ -o ./document/ --no-size-limit --no-binary --exclude "./script/dir2md.sh|./.github/workflows/repo-summary.yml"
 
       - name: Commit and push changes
         run: |
