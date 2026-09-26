@@ -1,0 +1,40 @@
+name: Make repository summary
+
+on:
+  push:
+
+jobs:
+  run-and-commit:
+    runs-on: ubuntu-latest
+
+    # コミットをリモートに書き込むための権限
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run script
+        run: |
+          chmod +x ./script/dir2md.sh
+          ./script/dir2md.sh
+
+      - name: Commit and push changes
+        run: |
+          # document/ ディレクトリが存在しない場合は作成
+          mkdir -p document/
+
+          # 変更をステージング
+          git add document/
+
+          # 差分がある場合のみコミット＆プッシュを行う
+          if git status --porcelain document/ | grep -q .; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            
+            git commit -m "docs: update automatically generated documents"
+            git push
+          else
+            echo "No changes in document/ to commit."
+          fi
