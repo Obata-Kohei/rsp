@@ -33,17 +33,20 @@ impl Parser {
 	}
 
 	pub fn parse_one(&mut self) -> Result<SExpr, ParseError> {
-		let expr = self.parse_expr()?;
-
-		if self.position < self.tokens.len() {
-			return Err(ParseError::UnexpectedToken(
-				self.tokens[self.position].clone(),
-			));
-		}
-
-		Ok(expr)
+		self.parse_expr()
 	}
 
+	pub fn parse(&mut self) -> Result<Vec<SExpr>, ParseError> {
+		let mut expressions = Vec::new();
+
+		while self.position < self.tokens.len() {
+			expressions.push(self.parse_one()?);
+		}
+
+		Ok(expressions)
+	}
+
+	// 次の1つのS式を読む
 	fn parse_expr(&mut self) -> Result<SExpr, ParseError> {
 		let token = self.next_token()?;
 
@@ -122,7 +125,7 @@ mod tests {
     use super::*;
     use crate::lexer::tokenize;
 
-    fn parse(input: &str) -> SExpr {
+    fn parse_test(input: &str) -> SExpr {
         let tokens = tokenize(input).unwrap();
         let mut parser = Parser::new(tokens);
         parser.parse_one().unwrap()
@@ -130,19 +133,19 @@ mod tests {
 
     #[test]
     fn parse_atom() {
-        assert_eq!(parse("A"), SExpr::Atom("A".to_string()));
+        assert_eq!(parse_test("A"), SExpr::Atom("A".to_string()));
     }
 
     #[test]
     fn parse_nil() {
-        assert_eq!(parse("nil"), SExpr::Nil);
-        assert_eq!(parse("()"), SExpr::Nil);
+        assert_eq!(parse_test("nil"), SExpr::Nil);
+        assert_eq!(parse_test("()"), SExpr::Nil);
     }
 
     #[test]
     fn parse_dotted_pair() {
         assert_eq!(
-            parse("(A . B)"),
+            parse_test("(A . B)"),
             SExpr::Cons(
                 Box::new(SExpr::Atom("A".to_string())),
                 Box::new(SExpr::Atom("B".to_string()))
@@ -154,7 +157,7 @@ mod tests {
     fn parse_single_element_list() {
         // (A) -> (A . nil)
         assert_eq!(
-            parse("(A)"),
+            parse_test("(A)"),
             SExpr::Cons(
                 Box::new(SExpr::Atom("A".to_string())),
                 Box::new(SExpr::Nil)
@@ -166,7 +169,7 @@ mod tests {
     fn parse_list_sugar() {
         // (A B C) -> (A . (B . (C . nil)))
         assert_eq!(
-            parse("(A B C)"),
+            parse_test("(A B C)"),
             SExpr::Cons(
                 Box::new(SExpr::Atom("A".to_string())),
                 Box::new(SExpr::Cons(
@@ -184,7 +187,7 @@ mod tests {
     fn parse_quote_sugar() {
         // 'A -> (quote A) -> (quote . (A . nil))
         assert_eq!(
-            parse("'A"),
+            parse_test("'A"),
             SExpr::Cons(
                 Box::new(SExpr::Atom("quote".to_string())),
                 Box::new(SExpr::Cons(
@@ -242,7 +245,7 @@ mod tests {
 	#[test]
 	fn parse_empty_list() {
 		assert_eq!(
-			parse("()"),
+			parse_test("()"),
 			SExpr::Nil
 		);
 	}
@@ -250,7 +253,7 @@ mod tests {
 	#[test]
 	fn parse_nested_list() {
 		assert_eq!(
-			parse("(A (B C))"),
+			parse_test("(A (B C))"),
 			SExpr::Cons(
 				Box::new(SExpr::Atom("A".to_string())),
 				Box::new(
@@ -276,7 +279,7 @@ mod tests {
 	#[test]
 	fn parse_nested_quote() {
 		assert_eq!(
-			parse("'(A B)"),
+			parse_test("'(A B)"),
 			SExpr::Cons(
 				Box::new(SExpr::Atom("quote".to_string())),
 				Box::new(
@@ -296,6 +299,61 @@ mod tests {
 					)
 				),
 			)
+		);
+	}
+
+	#[test]
+	fn parse_multiple_expressions() {
+		let tokens = tokenize(
+			"(define x 'Hello)
+			(define y 'World)
+			(cons x y)"
+		).unwrap();
+
+		let mut parser = Parser::new(tokens);
+
+		let expressions = parser.parse().unwrap();
+
+		assert_eq!(expressions.len(), 3);
+
+		assert_eq!(
+			expressions[0],
+			parse_test("(define x 'Hello)")
+		);
+
+		assert_eq!(
+			expressions[1],
+			parse_test("(define y 'World)")
+		);
+
+		assert_eq!(
+			expressions[2],
+			parse_test("(cons x y)")
+		);
+	}
+
+	#[test]
+	fn parse_empty_input() {
+		let tokens = tokenize("").unwrap();
+		let mut parser = Parser::new(tokens);
+
+		assert_eq!(
+			parser.parse().unwrap(),
+			Vec::<SExpr>::new()
+		);
+	}
+
+	#[test]
+	fn parse_single_expression() {
+		let tokens = tokenize("(A B C)").unwrap();
+		let mut parser = Parser::new(tokens);
+
+		let expressions = parser.parse().unwrap();
+
+		assert_eq!(expressions.len(), 1);
+		assert_eq!(
+			expressions[0],
+			parse_test("(A B C)")
 		);
 	}
 }

@@ -590,7 +590,7 @@ mod tests {
             eval(
                 &Parser::new(
                     tokenize("x").unwrap()
-                ).parse().unwrap(),
+                ).parse_one().unwrap(),
                 env,
             ).unwrap(),
             Value::Atom("Hello".to_string())
