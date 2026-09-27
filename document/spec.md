@@ -33,14 +33,11 @@ AtomとCons cell (Pair)のみとする．
 
 ---
 ## 挙動の確認
-- `((lambda (x y) (atom x)) 'Hello)`のようなコード，つまりLambda式の引数の中で使わないものがあるもので，EvalError::InvalidArgumentCountが出る．これは不具合であるべきなのか？
-
-- defineの不具合？: `(define x 'Hello)`などとdefineを使用したコードを与えるとEvalError::InvalidSpecialFormが出る．
 
 
 ---
 ## 追加したいこと
-- REPLとして使えるようにする
+- REPLとして使えるようにする: DONE
 - <インタプリタのコマンド名> foo.lspなどと書いて，複数のS式が書かれたまとまったコードを実行したい．
 - <インタプリタのコマンド名> <S式>と書いて，S式を評価実行したい．
 
