@@ -2,10 +2,13 @@
  * lexer.rs
 */
 
+use std::string;
+
 const LPAREN: char = '(';
 const RPAREN: char = ')';
 const DOT: char = '.';
 const QUOTE: char = '\'';
+const DOUBLE_QUOTE: char = '"';
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
@@ -46,6 +49,35 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, LexError> {
 				token_list.push(Token::Quote);
 				chars.next();
 			}
+            DOUBLE_QUOTE => {  // 文字列処理
+                chars.next();
+                let mut string_literal = String::new();
+                while let Some(&c) = chars.peek() {
+                    if c == DOUBLE_QUOTE {
+                        chars.next();  // 閉じる"を消費する
+                        break;
+                    } else if c == '\\' {
+                        // エスケープ文字の処理
+                        chars.next();  // '\\'を消費
+                        if let Some(&escaped) = chars.peek() {
+                            match escaped {
+                                'n' => string_literal.push('\n'),
+                                't' => string_literal.push('\t'),
+                                'r' => string_literal.push('\r'),
+                                '\\' => string_literal.push('\\'),
+                                '"' => string_literal.push('"'),
+                                _ => string_literal.push(escaped),  // ここにないエスケープはそのまま書いておく
+                            }
+                            chars.next();
+                        }
+                    } else {
+                        string_literal.push(c);
+                        chars.next();
+                    }
+                }
+                token_list.push(Token::Quote);
+                token_list.push(Token::Symbol(string_literal));
+            }
 			_ => {
 				let mut symbol = String::new();
 				while let Some(&c) = chars.peek() {
