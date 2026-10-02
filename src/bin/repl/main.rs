@@ -7,19 +7,18 @@ use rsp::lexer::tokenize;
 use rsp::parser::Parser;
 use rsp::evaluator::{eval, Environment, Value};
 
-use crate::repl_cmds::{ReplAction, handle_repl_command};
+use crate::repl_cmds::{ReplStatus, handle_repl_command};
 
 mod repl_cmds;
 
 fn main() {
 	// REPL全体で共有する環境
 	let global_env = Rc::new(RefCell::new(Environment::new()));
-	let mut repl_action: Option<ReplAction> = None;
 
 	println!("< Lisp REPL >");
 	println!("Type Ctrl-D to exit.");
 
-	loop {
+	'repl: loop {
 		io::stdout().flush().expect("stdout should be flushed...");
 
 		// ひとつのS式を完成するまで入力する
@@ -55,7 +54,11 @@ fn main() {
 		// S式を順番に評価
 		for expr in expressions {
 			// まずREPL特有のコマンドか検査して処理する
-			//repl_action = match handle_repl_command(&expr, Rc::clone(&global_env))
+			match handle_repl_command(&expr, &global_env) {
+				Some(ReplStatus::Exit) => break 'repl,  // REPL全体を終了
+				Some(ReplStatus::Handled) => continue,  // REPLコマンドを実行したので以降のevalはスキップ
+				None => {}  // REPLコマンドではない場合は通常のevalへ
+			}
 
 			// eval
 			match eval(&expr, Rc::clone(&global_env)) {

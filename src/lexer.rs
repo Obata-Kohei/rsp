@@ -2,8 +2,6 @@
  * lexer.rs
 */
 
-use std::string;
-
 const LPAREN: char = '(';
 const RPAREN: char = ')';
 const DOT: char = '.';
