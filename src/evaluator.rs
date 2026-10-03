@@ -3,9 +3,7 @@
 */
 
 use std::{
-    cell::RefCell,
-    collections::HashMap,
-    rc::Rc,
+    cell::RefCell, collections::HashMap, rc::Rc, todo,
 };
 
 use crate::parser::SExpr;
@@ -165,6 +163,9 @@ pub enum EvalError {
     NotCallable,
     InvalidSpecialForm,
     InvalidLambda,
+    IoError(String),
+    LexError(String),
+    ParseError(String),
     // 必要に応じて追加する
 }
 
@@ -188,7 +189,7 @@ pub fn eval(
         SExpr::Cons(operator, arguments) => {
             if let SExpr::Atom(op_name) = &**operator {
                 match op_name.as_str() {
-                    "quote" | "cond" | "lambda" | "define" => {
+                    "quote" | "cond" | "lambda" | "define" | "load" => {
                         return eval_special_form(op_name, arguments, env);
                     }
                     _ => {}
@@ -211,6 +212,11 @@ fn eval_special_form(
         "cond" => eval_cond(args, env),
         "lambda" => eval_lambda(args, env),
         "define" => eval_define(args, env),
+
+        // Pure Lispでない特殊形式
+        "load" => eval_load(args, Rc::clone(&env)),
+        //"import" => todo!(),
+
         _ => Err(EvalError::InvalidSpecialForm),
     }
 }
@@ -283,6 +289,41 @@ fn eval_define(args: &SExpr, env: Rc<RefCell<Environment>>) -> Result<Value, Eva
     let value = eval(list[1], Rc::clone(&env))?;
     env.borrow_mut().define(name, value.clone());
     Ok(value)
+}
+
+fn eval_load(args: &SExpr, env: Rc<RefCell<Environment>>) -> Result<Value, EvalError> {
+    let list = extract_list(args)?;
+    if list.len() != 1 {
+        return Err(EvalError::InvalidArgumentCount);
+    }
+
+    let filename = match list[0] {
+        SExpr::Atom(s) => s.clone(),  // (load prg.lsp)　のようにそのまま書かれた場合
+        _ => {
+            match eval(list[0], Rc::clone(&env))? {
+                Value::Atom(s) => s,  // (load "prg.lsp") のように "" で囲まれた文字列の場合
+                _ => return Err(EvalError::InvalidArgumentType),
+            }
+        }
+    };
+
+    let content = std::fs::read_to_string(&filename)
+        .map_err(|e| EvalError::IoError(e.to_string()))?;
+
+    let tokens = crate::lexer::tokenize(&content)
+        .map_err(|e| EvalError::LexError(format!("{:?}", e)))?;
+
+    let mut parser = crate::parser::Parser::new(tokens);
+    let expressions = parser.parse()
+        .map_err(|e| EvalError::ParseError(format!("{:?}", e)))?;
+
+    // 取得したS式を順番に現在の環境で評価
+    let mut last_val = Value::Nil;
+    for expr in expressions {
+        last_val = eval(&expr, Rc::clone(&env))?;
+    }
+
+    Ok(last_val)
 }
 
 
